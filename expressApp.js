@@ -1,10 +1,7 @@
-import http from "http";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+import express from "express";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const app = express();
+app.use(express.json());
 
 let cart = [
   {
@@ -12,120 +9,148 @@ let cart = [
     productName: "Wireless Mouse",
     price: 799,
     quantity: 2,
+    category: "Electronics",
   },
   {
     id: 2,
     productName: "Keyboard",
     price: 1200,
     quantity: 1,
+    category: "Electronics",
+  },
+  {
+    id: 3,
+    productName: "Notebook",
+    price: 100,
+    quantity: 5,
+    category: "Stationery",
   },
 ];
 
-const server = http.createServer((req, res) => {
-  const { method, url } = req;
-
-  // Welcome route
-  if (method === "GET" && url === "/") {
-    res.writeHead(200, { "Content-Type": "text/html" });
-    res.end("<h1>Welcome to Shopping Cart</h1>");
-  }
-
-  // Get cart items
-  else if (method === "GET" && url === "/cart") {
-    res.writeHead(200, {
-      "Content-Type": "application/json",
-    });
-    res.end(JSON.stringify(cart));
-  }
-
-  // About route
-  else if (method === "GET" && url === "/about") {
-    res.writeHead(200, { "Content-Type": "text/html" });
-    res.end("<h1>Shopping Cart Management Application</h1>");
-  }
-
-  // Serve HTML using FS module
-  else if (method === "GET" && url === "/home") {
-    const filePath = path.join(__dirname, "public", "index.html");
-
-    fs.readFile(filePath, (err, data) => {
-      if (err) {
-        res.writeHead(500, {
-          "Content-Type": "text/plain",
-        });
-        res.end("Error reading HTML file");
-        return;
-      }
-
-      res.writeHead(200, {
-        "Content-Type": "text/html",
-      });
-      res.end(data);
-    });
-  }
-
-  // Add product to cart
-  else if (method === "POST" && url === "/add-to-cart") {
-    let body = "";
-
-    req.on("data", (chunk) => {
-      body += chunk;
-    });
-
-    req.on("end", () => {
-      try {
-        const product = JSON.parse(body);
-
-        if (
-          product.id === undefined ||
-          !product.productName ||
-          typeof product.price !== "number" ||
-          typeof product.quantity !== "number"
-        ) {
-          res.writeHead(400, {
-            "Content-Type": "application/json",
-          });
-          res.end(
-            JSON.stringify({
-              message: "Invalid product details",
-            }),
-          );
-          return;
-        }
-
-        cart.push(product);
-
-        res.writeHead(201, {
-          "Content-Type": "application/json",
-        });
-        res.end(
-          JSON.stringify({
-            message: "Product added successfully",
-            product,
-          }),
-        );
-      } catch {
-        res.writeHead(400, {
-          "Content-Type": "application/json",
-        });
-        res.end(
-          JSON.stringify({
-            message: "Invalid JSON",
-          }),
-        );
-      }
-    });
-  }
-
-  // Invalid route
-  else {
-    res.writeHead(404, {
-      "Content-Type": "text/plain",
-    });
-    res.end("404 - Route Not Found");
-  }
+// GET all cart items
+app.get("/cart", (req, res) => {
+  res.json(cart);
 });
 
-server.listen(3000, () => {
-  console.log("HTTP Server running at http://localhost:3000");
+// GET cart item by ID
+app.get("/cart/:id", (req, res) => {
+  const id = Number(req.params.id);
+  const product = cart.find((item) => item.id === id);
+
+  if (!product) {
+    return res.status(404).json({
+      message: "Product not found",
+    });
+  }
+
+  res.json({
+    ...product,
+    totalPrice: product.price * product.quantity,
+  });
+});
+
+// POST add a product
+app.post("/cart", (req, res) => {
+  const { id, productName, price, quantity, category } = req.body;
+
+  if (
+    id === undefined ||
+    !productName ||
+    typeof price !== "number" ||
+    typeof quantity !== "number" ||
+    !category
+  ) {
+    return res.status(400).json({
+      message: "Invalid product details",
+    });
+  }
+
+  if (cart.some((item) => item.id === id)) {
+    return res.status(400).json({
+      message: "Product ID already exists",
+    });
+  }
+
+  const product = {
+    id,
+    productName,
+    price,
+    quantity,
+    category,
+  };
+
+  cart.push(product);
+
+  res.status(201).json({
+    message: "Product added successfully",
+    product,
+  });
+});
+
+// PUT update product
+app.put("/cart/:id", (req, res) => {
+  const id = Number(req.params.id);
+  const index = cart.findIndex((item) => item.id === id);
+
+  if (index === -1) {
+    return res.status(404).json({
+      message: "Product not found",
+    });
+  }
+
+  const { productName, price, quantity, category } = req.body;
+
+  if (
+    !productName ||
+    typeof price !== "number" ||
+    typeof quantity !== "number" ||
+    !category
+  ) {
+    return res.status(400).json({
+      message: "Invalid product details",
+    });
+  }
+
+  cart[index] = {
+    id,
+    productName,
+    price,
+    quantity,
+    category,
+  };
+
+  res.json({
+    message: "Product updated successfully",
+    product: cart[index],
+  });
+});
+
+// DELETE product
+app.delete("/cart/:id", (req, res) => {
+  const id = Number(req.params.id);
+  const index = cart.findIndex((item) => item.id === id);
+
+  if (index === -1) {
+    return res.status(404).json({
+      message: "Product not found",
+    });
+  }
+
+  const deletedProduct = cart.splice(index, 1);
+
+  res.json({
+    message: "Product deleted successfully",
+    product: deletedProduct[0],
+  });
+});
+
+// Invalid routes
+app.use((req, res) => {
+  res.status(404).json({
+    message: "Route not found",
+  });
+});
+
+app.listen(4000, () => {
+  console.log("Express Server running at http://localhost:4000");
 });
